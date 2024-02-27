@@ -4,6 +4,8 @@ from typing import Optional, Tuple
 
 import torch
 from fastchat.model import get_conversation_template, load_model
+from llama_cpp import Llama
+from transformers import AutoTokenizer
 from ftfy import fix_text
 from transformers.generation import GenerationConfig
 
@@ -11,7 +13,7 @@ from rank_llm.rerank.rankllm import PromptMode, RankLLM
 from rank_llm.result import Result
 
 
-class RankListwiseOSLLM(RankLLM):
+class RankListwiseOSLLMGGUF(RankLLM):
     def __init__(
         self,
         model: str,
@@ -62,7 +64,9 @@ class RankListwiseOSLLM(RankLLM):
                 f"Unsupported prompt mode: {prompt_mode}. The only prompt mode currently supported is a slight variation of Rank_GPT prompt."
             )
         # ToDo: Make repetition_penalty configurable
-        self._llm, self._tokenizer = load_model(model, device=device, num_gpus=num_gpus)
+        #self._llm, self._tokenizer = load_model(model, device=device, num_gpus=num_gpus)
+        self._llm = Llama(model_path= model,  n_ctx=4096, n_gpu_layers=-1,) # model is the path of the local gguf model 
+        self._tokenizer = self._llm.tokenizer 
         self._variable_passages = variable_passages
         self._window_size = window_size
         self._system_message = system_message

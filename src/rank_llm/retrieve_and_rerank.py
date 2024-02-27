@@ -4,6 +4,7 @@ from rank_llm.evaluation.trec_eval import EvalFunction
 from rank_llm.rerank.api_keys import get_azure_openai_args, get_openai_api_key
 from rank_llm.rerank.rank_gpt import SafeOpenai
 from rank_llm.rerank.rank_listwise_os_llm import RankListwiseOSLLM
+from rank_llm.rerank.rank_listwise_os_llm_gguf import RankListwiseOSLLMGGUF
 from rank_llm.rerank.rankllm import PromptMode
 from rank_llm.rerank.reranker import Reranker
 from rank_llm.retrieve.pyserini_retriever import RetrievalMethod
@@ -48,6 +49,18 @@ def retrieve_and_rerank(
         )
     elif "vicuna" in model_path.lower() or "zephyr" in model_path.lower():
         agent = RankListwiseOSLLM(
+            model=model_path,
+            context_size=context_size,
+            prompt_mode=prompt_mode,
+            num_few_shot_examples=num_few_shot_examples,
+            device=device,
+            num_gpus=num_gpus,
+            variable_passages=variable_passages,
+            window_size=window_size,
+            system_message=system_message,
+        )
+    elif "gguf" in model_path.lower():
+        agent = RankListwiseOSLLMGGUF(
             model=model_path,
             context_size=context_size,
             prompt_mode=prompt_mode,
