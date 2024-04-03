@@ -1,10 +1,12 @@
 import json
 import random
+import os
 from typing import Optional, Tuple
 
 import torch
 from fastchat.model import get_conversation_template, load_model
 from llama_cpp import Llama
+from llama_cpp.llama_tokenizer import LlamaHFTokenizer, LlamaTokenizer
 from transformers import AutoTokenizer
 from ftfy import fix_text
 from transformers.generation import GenerationConfig
@@ -65,8 +67,15 @@ class RankListwiseOSLLMGGUF(RankLLM):
             )
         # ToDo: Make repetition_penalty configurable
         #self._llm, self._tokenizer = load_model(model, device=device, num_gpus=num_gpus)
-        self._llm = Llama(model_path= model,  n_ctx=4096, n_gpu_layers=-1,) # model is the path of the local gguf model 
-        self._tokenizer = self._llm.tokenizer 
+        #self._tokenizer = AutoTokenizer.from_pretrained(os.path.dirname(model)+"/", use_fast=False,trust_remote_code=True )
+        #self._llm = Llama(model_path= model,  n_ctx=4096, n_gpu_layers=-1,tokenizer=self._tokenizer) # model is the path of the local gguf model
+        #print("Checking Llama Tokenizer")
+        #print(isinstance(self._tokenizer, LlamaTokenizer))
+        self._llm= Llama(model_path= model,  n_ctx=4096, n_gpu_layers=-1) 
+        self._tokenizer = self._llm.tokenizer_
+        #self._llm, self._tokenizer = load_model(os.path.dirname(model)+"/", device=device, num_gpus=num_gpus)
+        #self._tokenizer = AutoTokenizer.from_pretrained('castorini/rank_zephyr_7b_v1_full', use_fast=True, trust_remote_code=True)
+        #print(self._llm.__dict__)
         self._variable_passages = variable_passages
         self._window_size = window_size
         self._system_message = system_message
@@ -80,23 +89,20 @@ class RankListwiseOSLLMGGUF(RankLLM):
     ) -> Tuple[str, int]:
         if current_window_size is None:
             current_window_size = self._window_size
-        inputs = self._tokenizer([prompt])
-        inputs = {k: torch.tensor(v).to(self._device) for k, v in inputs.items()}
-        gen_cfg = GenerationConfig.from_model_config(self._llm.config)
-        gen_cfg.max_new_tokens = self.num_output_tokens(current_window_size)
-        gen_cfg.min_new_tokens = self.num_output_tokens(current_window_size)
-        # gen_cfg.temperature = 0
-        gen_cfg.do_sample = False
-        output_ids = self._llm.generate(**inputs, generation_config=gen_cfg)
 
-        if self._llm.config.is_encoder_decoder:
-            output_ids = output_ids[0]
-        else:
-            output_ids = output_ids[0][len(inputs["input_ids"][0]) :]
-        outputs = self._tokenizer.decode(
-            output_ids, skip_special_tokens=True, spaces_between_special_tokens=False
-        )
-        return outputs, output_ids.size(0)
+        prompt ="Hello World"   
+
+        inputs = self._tokenizer.tokenize(prompt.encode('utf-8')) # tokenize only accepts utf-8
+        print("Printing tokenized outputs")
+        print(inputs)
+        output_ids = self._llm.generate(inputs)
+        # Finished generation
+        print(output_ids)
+        #print(len(output_ids))
+        print("Generated outputs with detokenizing")
+        for token in output_ids:
+            print(self._llm.detokenize([token]))
+        #output_ids = self.generate(inputs)
 
     def num_output_tokens(self, current_window_size: Optional[int] = None) -> int:
         if current_window_size is None:

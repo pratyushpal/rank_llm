@@ -47,8 +47,8 @@ def retrieve_and_rerank(
             keys=openai_keys,
             **(get_azure_openai_args() if use_azure_openai else {}),
         )
-    elif "vicuna" in model_path.lower() or "zephyr" in model_path.lower():
-        agent = RankListwiseOSLLM(
+    elif "gguf" in model_path.lower():
+        agent = RankListwiseOSLLMGGUF(
             model=model_path,
             context_size=context_size,
             prompt_mode=prompt_mode,
@@ -59,8 +59,8 @@ def retrieve_and_rerank(
             window_size=window_size,
             system_message=system_message,
         )
-    elif "gguf" in model_path.lower():
-        agent = RankListwiseOSLLMGGUF(
+    elif "vicuna" in model_path.lower() or "zephyr" in model_path.lower():
+        agent = RankListwiseOSLLM(
             model=model_path,
             context_size=context_size,
             prompt_mode=prompt_mode,
