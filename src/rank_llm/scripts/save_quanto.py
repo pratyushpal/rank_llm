@@ -5,7 +5,7 @@ import json
 import logging
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from quanto import Calibration, freeze, qfloat8, qint4, qint8, quantize
+from quanto import Calibration, freeze, qfloat8, qint4, qint8, quantize, safe_save, safe_load
 import torch 
 
 def parse_args():
@@ -81,14 +81,17 @@ def main():
     )
 
     weights = keyword_to_itype(args.weights)
-    activations = keyword_to_itype(args.activations)
+    # As serialization is only supported for weights 
+    #activations = keyword_to_itype(args.activations)
 
     #Only accepting activations as None for now
-    quantize(model, weights=weights, activations=activations)
+    logging.info(f"Quantizing the model.")
+    quantize(model, weights=weights)
     
-    logging.info(f"Saving quantized model at {quant_path}.")
+    logging.info(f"Freezing model weights.")
     freeze(model)
-    model.save_pretrained(quant_path)
+    logging.info(f"Saving quantized model at {quant_path}.")
+    safe_save(model.state_dict(), quant_path)
     tokenizer.save_pretrained(quant_path)
 
 

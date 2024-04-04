@@ -6,6 +6,7 @@ import torch
 from fastchat.model import get_conversation_template, load_model
 from ftfy import fix_text
 from transformers.generation import GenerationConfig
+from transformers import QuantoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from rank_llm.rerank.rankllm import PromptMode, RankLLM
 from rank_llm.result import Result
@@ -62,8 +63,11 @@ class RankListwiseOSLLM(RankLLM):
                 f"Unsupported prompt mode: {prompt_mode}. The only prompt mode currently supported is a slight variation of Rank_GPT prompt."
             )
         # ToDo: Make repetition_penalty configurable
-        print("here")
+        
+        quantization_config = QuantoConfig(weights="int8")
         self._llm, self._tokenizer = load_model(model, device=device, num_gpus=num_gpus)
+        #self._llm  = AutoModelForCausalLM.from_pretrained(model, device_map="cuda:0", quantization_config=quantization_config)
+        #self._tokenizer = AutoTokenizer.from_pretrained(model)
         self._variable_passages = variable_passages
         self._window_size = window_size
         self._system_message = system_message
@@ -82,14 +86,10 @@ class RankListwiseOSLLM(RankLLM):
         gen_cfg = GenerationConfig.from_model_config(self._llm.config)
         gen_cfg.max_new_tokens = self.num_output_tokens(current_window_size)
         gen_cfg.min_new_tokens = self.num_output_tokens(current_window_size)
-        # gen_cfg.temperature = 0
+        #gen_cfg.temperature = 0
         gen_cfg.do_sample = False
         output_ids = self._llm.generate(**inputs, generation_config=gen_cfg)
-
-        print(prompt)
-        print(inputs)
-        print(output_ids)
-
+        
         if self._llm.config.is_encoder_decoder:
             output_ids = output_ids[0]
         else:
@@ -97,7 +97,7 @@ class RankListwiseOSLLM(RankLLM):
         outputs = self._tokenizer.decode(
             output_ids, skip_special_tokens=True, spaces_between_special_tokens=False
         )
-        #return outputs, output_ids.size(0)
+        return outputs, output_ids.size(0)
 
     def num_output_tokens(self, current_window_size: Optional[int] = None) -> int:
         if current_window_size is None:
