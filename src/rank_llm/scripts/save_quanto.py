@@ -91,8 +91,8 @@ def main():
     logging.info(f"Freezing model weights.")
     freeze(model)
     logging.info(f"Saving quantized model at {quant_path}.")
-    safe_save(model.state_dict(), quant_path)
     tokenizer.save_pretrained(quant_path)
+    safe_save(model.state_dict(), quant_path+"/"+quant_path+".pt")
 
 
 if __name__ == "__main__":
