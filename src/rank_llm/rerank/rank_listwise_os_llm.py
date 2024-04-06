@@ -7,6 +7,7 @@ from fastchat.model import get_conversation_template, load_model
 from ftfy import fix_text
 from transformers.generation import GenerationConfig
 from transformers import QuantoConfig, AutoModelForCausalLM, AutoTokenizer
+from quanto import safe_load, freeze, quantize
 
 from rank_llm.rerank.rankllm import PromptMode, RankLLM
 from rank_llm.result import Result
@@ -65,9 +66,19 @@ class RankListwiseOSLLM(RankLLM):
         # ToDo: Make repetition_penalty configurable
         
         quantization_config = QuantoConfig(weights="int8")
-        self._llm, self._tokenizer = load_model(model, device=device, num_gpus=num_gpus)
+        
+        if "quanto" in model:
+            self._llm = AutoModelForCausalLM.from_pretrained("castorini/rank_zephyr_7b_v1_full",torch_dtype=torch.float16).to(device)
+            quantize(self._llm)
+            self._tokenizer = AutoTokenizer.from_pretrained(model, device=device, num_gpus=num_gpus)
+            state_dict_path = model+"/"+model+".pt"
+            self._llm.load_state_dict(safe_load(state_dict_path))
+        else:
+            self._llm, self._tokenizer = load_model(model, device=device, num_gpus=num_gpus)
+        
         #self._llm  = AutoModelForCausalLM.from_pretrained(model, device_map="cuda:0", quantization_config=quantization_config)
-        #self._tokenizer = AutoTokenizer.from_pretrained(model)
+        #freeze(self._llm)
+        self._tokenizer = AutoTokenizer.from_pretrained(model)
         self._variable_passages = variable_passages
         self._window_size = window_size
         self._system_message = system_message

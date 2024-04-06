@@ -7,6 +7,9 @@ import logging
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from quanto import Calibration, freeze, qfloat8, qint4, qint8, quantize, safe_save, safe_load
 import torch 
+import os
+
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 def parse_args():
     """Parses command line arguments."""
@@ -75,12 +78,20 @@ def main():
     # Load model
     logging.info(f"Loading model from {model_path}.")
 
-    model =  AutoModelForCausalLM.from_pretrained(model_path)
+    model =  AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16)
     tokenizer = AutoTokenizer.from_pretrained(
         model_path, trust_remote_code=True
     )
 
     weights = keyword_to_itype(args.weights)
+    logging.info(f"State dict of the base model.")
+    print(model)
+    print(model.state_dict().keys())
+
+    logging.info(f"Model Keys.")
+    print(len(model.state_dict().keys()))
+
+
     # As serialization is only supported for weights 
     #activations = keyword_to_itype(args.activations)
 
@@ -90,6 +101,14 @@ def main():
     
     logging.info(f"Freezing model weights.")
     freeze(model)
+
+    print(model)
+
+    logging.info(f"State dict of the quantized model.")
+    print(model.state_dict().keys())
+
+    logging.info(f"Quantized Model Keys.")
+    print(len(model.state_dict().keys()))
     logging.info(f"Saving quantized model at {quant_path}.")
     tokenizer.save_pretrained(quant_path)
     safe_save(model.state_dict(), quant_path+"/"+quant_path+".pt")

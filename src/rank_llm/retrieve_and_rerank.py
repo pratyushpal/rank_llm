@@ -124,12 +124,12 @@ def retrieve_and_rerank(
                 and TOPICS[dataset] not in ["dl22", "dl22-passage", "news"]
             ):
                 print("Evaluating:")
-                EvalFunction.eval(
-                    ["-c", "-m", "ndcg_cut.1", TOPICS[dataset], file_name]
-                )
-                EvalFunction.eval(
-                    ["-c", "-m", "ndcg_cut.5", TOPICS[dataset], file_name]
-                )
+                #EvalFunction.eval(
+                #    ["-c", "-m", "ndcg_cut.1", TOPICS[dataset], file_name]
+                #)
+                #EvalFunction.eval(
+                #    ["-c", "-m", "ndcg_cut.5", TOPICS[dataset], file_name]
+                #)
                 EvalFunction.eval(
                     ["-c", "-m", "ndcg_cut.10", TOPICS[dataset], file_name]
                 )
