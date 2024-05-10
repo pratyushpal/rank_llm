@@ -10,6 +10,7 @@ from rank_llm.rerank.reranker import Reranker
 from rank_llm.retrieve.pyserini_retriever import RetrievalMethod
 from rank_llm.retrieve.retriever import RetrievalMode, Retriever
 from rank_llm.retrieve.topics_dict import TOPICS
+import time 
 
 
 def retrieve_and_rerank(
@@ -35,6 +36,7 @@ def retrieve_and_rerank(
     index_path: str = None,
     topics_path: str = None,
     index_type: str = None,
+    batched: bool = False,
 ):
     # Construct Rerank Agent
     if "gpt" in model_path or use_azure_openai:
@@ -70,6 +72,7 @@ def retrieve_and_rerank(
             variable_passages=variable_passages,
             window_size=window_size,
             system_message=system_message,
+            batched=batched,
         )
     else:
         raise ValueError(f"Unsupported model: {model_path}")
@@ -96,6 +99,8 @@ def retrieve_and_rerank(
         raise ValueError(f"Invalid retrieval mode: {retrieval_mode}")
     print("Reranking:")
     reranker = Reranker(agent)
+    #get_gpu_utilization()
+    start_time = time.time()
     for pass_ct in range(num_passes):
         print(f"Pass {pass_ct + 1} of {num_passes}:")
         rerank_results = reranker.rerank(
@@ -105,6 +110,7 @@ def retrieve_and_rerank(
             shuffle_candidates=shuffle_candidates,
             logging=print_prompts_responses,
             step=step_size,
+            batched=batched,
         )
 
         # generate trec_eval file & evaluate for named datasets only
@@ -139,5 +145,9 @@ def retrieve_and_rerank(
             retrieved_results = rerank_results
             for r in retrieved_results:
                 r.ranking_exec_summary = None
+    end_time = time.time()
+    time_taken = end_time-start_time
+
+    print(f"Time taken to rerank is: {time_taken}.")
 
     return rerank_results

@@ -6,6 +6,20 @@ from tqdm import tqdm
 
 from rank_llm.rerank.rankllm import RankLLM
 from rank_llm.result import Result, ResultsWriter
+import subprocess
+import re
+
+def get_gpu_utilization():
+    # Query to include memory total, memory used, and memory free
+    nvidia_smi_output = subprocess.check_output(["nvidia-smi", "--query-gpu=index,name,memory.total,memory.used,memory.free", "--format=csv,noheader,nounits"]).decode()
+    
+    # Parse the output
+    for line in nvidia_smi_output.strip().split('\n'):
+        gpu_id, name, mem_total, mem_used, mem_free = line.split(', ')
+        print(f"GPU ID: {gpu_id}, Name: {name}")
+        print(f"Total Memory: {mem_total} MiB")
+        print(f"Used Memory: {mem_used} MiB")
+        print(f"Free Memory: {mem_free} MiB\n")
 
 
 class Reranker:
@@ -21,6 +35,7 @@ class Reranker:
         step: int = 10,
         shuffle_candidates: bool = False,
         logging: bool = False,
+        batched: bool = False,
     ) -> List[Result]:
         """
         Reranks a list of retrieved results using the RankLLM agent.
@@ -40,6 +55,19 @@ class Reranker:
         Returns:
             List[Result]: A list containing the reranked results.
         """
+        get_gpu_utilization()
+        if batched:
+            return self._agent.sliding_windows_batched(
+                retrieved_results,
+                rank_start=max(rank_start, 0),
+                rank_end=min(
+                    rank_end, len(retrieved_results[0].hits)
+                ),  # TODO: Fails arbitrary hit sizes
+                window_size=window_size,
+                step=step,
+                shuffle_candidates=shuffle_candidates,
+                logging=logging,
+            )
         rerank_results = []
         for result in tqdm(retrieved_results):
             rerank_result = self._agent.sliding_windows(

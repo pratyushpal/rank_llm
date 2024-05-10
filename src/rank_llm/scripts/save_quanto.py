@@ -7,9 +7,8 @@ import logging
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from quanto import Calibration, freeze, qfloat8, qint4, qint8, quantize, safe_save, safe_load
 import torch 
-import os
+import time
 
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 def parse_args():
     """Parses command line arguments."""
@@ -48,6 +47,36 @@ def parse_args():
     args = parser.parse_args()
 
     return args
+
+@torch.no_grad()
+def generate(model, tokenizer, device, prompt, max_new_tokens):
+    inputs = tokenizer(prompt, return_tensors="pt", padding=True)
+    start = time.time()
+    outputs = model.generate(
+        input_ids=inputs.input_ids.to(device),
+        max_new_tokens=max_new_tokens,
+        attention_mask=inputs.attention_mask.to(device),
+        do_sample=True,
+        top_k=50,
+        top_p=0.9,
+    )
+    end = time.time()
+    generated_text = tokenizer.decode(outputs[0])
+    print(f"Generated '{generated_text}' in [{end - start:.2f} s]")
+
+
+@torch.no_grad()
+def calibrate(model, tokenizer, dataset, device, batch_size, samples=None):
+    model.eval()
+    total = 0
+    for batch in dataset.iter(batch_size=batch_size):
+        inputs = tokenizer(batch["text"], return_tensors="pt", padding=True)
+        input_ids = inputs.input_ids.to(device)
+        attention_mask = inputs.attention_mask.to(device)
+        model(input_ids, attention_mask=attention_mask)
+        total += input_ids.size(0)
+        if samples is not None and total >= samples:
+            break
 
 def keyword_to_itype(k):
     return {

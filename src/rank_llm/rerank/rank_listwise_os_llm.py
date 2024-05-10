@@ -1,4 +1,5 @@
 import json
+import os
 import random
 from typing import Optional, Tuple
 
@@ -6,8 +7,8 @@ import torch
 from fastchat.model import get_conversation_template, load_model
 from ftfy import fix_text
 from transformers.generation import GenerationConfig
-from transformers import QuantoConfig, AutoModelForCausalLM, AutoTokenizer
-from quanto import safe_load, freeze, quantize
+from vllm import LLM, SamplingParams
+
 
 from rank_llm.rerank.rankllm import PromptMode, RankLLM
 from rank_llm.result import Result
@@ -25,6 +26,7 @@ class RankListwiseOSLLM(RankLLM):
         variable_passages: bool = False,
         window_size: int = 20,
         system_message: str = None,
+        batched: bool = False
     ) -> None:
         """
          Creates instance of the RankListwiseOSLLM class, an extension of RankLLM designed for performing listwise ranking of passages using
@@ -65,20 +67,20 @@ class RankListwiseOSLLM(RankLLM):
             )
         # ToDo: Make repetition_penalty configurable
         
-        quantization_config = QuantoConfig(weights="int8")
-        
-        if "quanto" in model:
-            self._llm = AutoModelForCausalLM.from_pretrained("castorini/rank_zephyr_7b_v1_full",torch_dtype=torch.float16).to(device)
-            quantize(self._llm)
-            self._tokenizer = AutoTokenizer.from_pretrained(model, device=device, num_gpus=num_gpus)
-            state_dict_path = model+"/"+model+".pt"
-            self._llm.load_state_dict(safe_load(state_dict_path))
+        if batched:
+            self._llm = LLM(model,
+                             download_dir=os.getenv("HF_HOME"), 
+                             #gpu_memory_utilization=0.95, 
+                             max_model_len=4096,
+                             kv_cache_dtype="fp8",
+                             quantization_param_path='/home/pal/models_q/kv_scales_int8.json',
+                             )
+            self._tokenizer = self._llm.get_tokenizer()
         else:
-            self._llm, self._tokenizer = load_model(model, device=device, num_gpus=num_gpus)
-        
-        #self._llm  = AutoModelForCausalLM.from_pretrained(model, device_map="cuda:0", quantization_config=quantization_config)
-        #freeze(self._llm)
-        self._tokenizer = AutoTokenizer.from_pretrained(model)
+            self._llm, self._tokenizer = load_model(
+                model, device=device, num_gpus=num_gpus
+            )
+        self._batched = batched 
         self._variable_passages = variable_passages
         self._window_size = window_size
         self._system_message = system_message
@@ -90,25 +92,39 @@ class RankListwiseOSLLM(RankLLM):
     def run_llm(
         self, prompt: str, current_window_size: Optional[int] = None
     ) -> Tuple[str, int]:
-        if current_window_size is None:
-            current_window_size = self._window_size
-        inputs = self._tokenizer([prompt])
-        inputs = {k: torch.tensor(v).to(self._device) for k, v in inputs.items()}
-        gen_cfg = GenerationConfig.from_model_config(self._llm.config)
-        gen_cfg.max_new_tokens = self.num_output_tokens(current_window_size)
-        gen_cfg.min_new_tokens = self.num_output_tokens(current_window_size)
-        #gen_cfg.temperature = 0
-        gen_cfg.do_sample = False
-        output_ids = self._llm.generate(**inputs, generation_config=gen_cfg)
-        
-        if self._llm.config.is_encoder_decoder:
-            output_ids = output_ids[0]
+        if not self._batched:
+            if current_window_size is None:
+                current_window_size = self._window_size
+            inputs = self._tokenizer([prompt])
+            inputs = {k: torch.tensor(v).to(self._device) for k, v in inputs.items()}
+            gen_cfg = GenerationConfig.from_model_config(self._llm.config)
+            gen_cfg.max_new_tokens = self.num_output_tokens(current_window_size)
+            gen_cfg.min_new_tokens = self.num_output_tokens(current_window_size)
+            # gen_cfg.temperature = 0
+            gen_cfg.do_sample = False
+            output_ids = self._llm.generate(**inputs, generation_config=gen_cfg)
+
+            if self._llm.config.is_encoder_decoder:
+                output_ids = output_ids[0]
+            else:
+                output_ids = output_ids[0][len(inputs["input_ids"][0]) :]
+            outputs = self._tokenizer.decode(
+                output_ids,
+                skip_special_tokens=True,
+                spaces_between_special_tokens=False,
+            )
+            return outputs, output_ids.size(0)
         else:
-            output_ids = output_ids[0][len(inputs["input_ids"][0]) :]
-        outputs = self._tokenizer.decode(
-            output_ids, skip_special_tokens=True, spaces_between_special_tokens=False
-        )
-        return outputs, output_ids.size(0)
+            sampling_params = SamplingParams(
+                temperature=0.0,
+                max_tokens=self.num_output_tokens(current_window_size),
+                min_tokens=self.num_output_tokens(current_window_size),
+            )
+            outputs = self._llm.generate(prompt, sampling_params)
+            return [
+                (output.outputs[0].text, len(output.outputs[0].token_ids))
+                for output in outputs
+            ]
 
     def num_output_tokens(self, current_window_size: Optional[int] = None) -> int:
         if current_window_size is None:
